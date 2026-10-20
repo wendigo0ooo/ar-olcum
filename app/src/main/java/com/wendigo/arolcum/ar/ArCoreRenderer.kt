@@ -7,6 +7,7 @@ import com.google.ar.core.Anchor
 import com.google.ar.core.Camera
 import com.google.ar.core.DepthPoint
 import com.google.ar.core.Frame
+import com.google.ar.core.HitResult
 import com.google.ar.core.Plane
 import com.google.ar.core.Point
 import com.google.ar.core.Session
@@ -29,19 +30,27 @@ class ArCoreRenderer(
     private val viewProjection = FloatArray(16)
 
     @Volatile
-    private var lastFrame: Frame? = null
-
-    @Volatile
     var displayRotation: Int = 0
 
     @Volatile
-    var onHitMiss: (() -> Unit)? = null
+    var onHitMiss: ((HitFailure) -> Unit)? = null
 
     @Volatile
     var sessionResumed: Boolean = false
 
-    private var viewportWidth = 0
-    private var viewportHeight = 0
+    @Volatile
+    var viewportWidth = 0
+        private set
+
+    @Volatile
+    var viewportHeight = 0
+        private set
+
+    private var pendingTapX = 0f
+    private var pendingTapY = 0f
+
+    @Volatile
+    private var pendingTap = false
     private var lastDisplayWidth = -1
     private var lastDisplayHeight = -1
     private var lastDisplayRotation = -1
@@ -78,7 +87,6 @@ class ArCoreRenderer(
         } catch (exception: CameraNotAvailableException) {
             return
         }
-        lastFrame = frame
 
         GLES20.glDisable(GLES20.GL_DEPTH_TEST)
         GLES20.glDisable(GLES20.GL_CULL_FACE)
@@ -130,29 +138,46 @@ class ArCoreRenderer(
             tracking = mapTracking(camera),
             planeCount = planeCount
         )
+
+        if (pendingTap) {
+            pendingTap = false
+            processTap(frame, pendingTapX, pendingTapY)
+        }
     }
 
     fun handleTap(x: Float, y: Float) {
-        if (!sessionResumed) return
-        val frame = lastFrame ?: return
-        val hit = frame.hitTest(x, y).firstOrNull { result ->
-            when (val trackable = result.trackable) {
-                is Plane -> trackable.trackingState == ArTrackingState.TRACKING &&
-                    trackable.isPoseInPolygon(result.hitPose)
-                is Point -> trackable.trackingState == ArTrackingState.TRACKING
-                is DepthPoint -> trackable.trackingState == ArTrackingState.TRACKING
-                else -> false
-            }
+        pendingTapX = x
+        pendingTapY = y
+        pendingTap = true
+    }
+
+    private fun processTap(frame: Frame, x: Float, y: Float) {
+        if (frame.camera.trackingState != ArTrackingState.TRACKING) {
+            onHitMiss?.invoke(HitFailure.NOT_TRACKING)
+            return
         }
+
+        val hits = try {
+            frame.hitTest(x, y)
+        } catch (exception: Exception) {
+            onHitMiss?.invoke(HitFailure.NO_HIT)
+            return
+        }
+        val hit = hits.firstOrNull { result -> isPreferredHit(result) }
+            ?: hits.firstOrNull { result -> isTrackingHit(result) }
         if (hit == null) {
-            onHitMiss?.invoke()
+            val trackingPlanes = session.getAllTrackables(Plane::class.java)
+                .count { it.trackingState == ArTrackingState.TRACKING }
+            onHitMiss?.invoke(
+                if (hits.isEmpty() && trackingPlanes == 0) HitFailure.NO_PLANE else HitFailure.NO_HIT
+            )
             return
         }
 
         val anchor = try {
             hit.createAnchor()
         } catch (exception: Exception) {
-            onHitMiss?.invoke()
+            onHitMiss?.invoke(HitFailure.NO_HIT)
             return
         }
 
@@ -163,6 +188,24 @@ class ArCoreRenderer(
         anchors.add(anchor)
     }
 
+    private fun isPreferredHit(result: HitResult): Boolean {
+        return when (val trackable = result.trackable) {
+            is Plane -> trackable.trackingState == ArTrackingState.TRACKING &&
+                trackable.isPoseInExtents(result.hitPose)
+            is Point -> trackable.trackingState == ArTrackingState.TRACKING
+            is DepthPoint -> trackable.trackingState == ArTrackingState.TRACKING
+            else -> false
+        }
+    }
+
+    private fun isTrackingHit(result: HitResult): Boolean {
+        return when (result.trackable) {
+            is Plane, is Point, is DepthPoint ->
+                result.trackable.trackingState == ArTrackingState.TRACKING
+            else -> false
+        }
+    }
+
     fun reset() {
         anchors.forEach { it.detach() }
         anchors.clear()
@@ -170,7 +213,7 @@ class ArCoreRenderer(
     }
 
     fun pause() {
-        lastFrame = null
+        pendingTap = false
         lastDisplayWidth = -1
         lastDisplayHeight = -1
         lastDisplayRotation = -1

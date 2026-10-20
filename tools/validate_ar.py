@@ -180,6 +180,7 @@ if manifest is not None:
             "ar/ArCoreRenderer.kt",
             "ar/CameraBackgroundRenderer.kt",
             "ar/MeasureState.kt",
+            "ar/HitFailure.kt",
             "ui/OverlayView.kt",
         ]
         for source in required_sources:
@@ -206,8 +207,8 @@ if not gradle_path.exists():
 else:
     gradle = gradle_path.read_text(encoding="utf-8")
     required_gradle = [
-        ("versionCode = 2", "versionCode 2"),
-        ('versionName = "0.5"', 'versionName "0.5"'),
+        ("versionCode = 3", "versionCode 3"),
+        ('versionName = "0.5.1"', 'versionName "0.5.1"'),
         ("compileSdk = 34", "compileSdk 34"),
         ("minSdk = 24", "minSdk 24"),
         ("targetSdk = 34", "targetSdk 34"),

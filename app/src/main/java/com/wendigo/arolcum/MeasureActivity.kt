@@ -27,7 +27,9 @@ import com.google.android.material.button.MaterialButton
 import com.google.ar.core.Config
 import com.google.ar.core.Session
 import com.google.ar.core.exceptions.CameraNotAvailableException
+import com.google.ar.core.exceptions.UnsupportedConfigurationException
 import com.wendigo.arolcum.ar.ArCoreRenderer
+import com.wendigo.arolcum.ar.HitFailure
 import com.wendigo.arolcum.ar.MeasureState
 import com.wendigo.arolcum.ar.TrackingState
 import com.wendigo.arolcum.core.UnitSystem
@@ -223,14 +225,22 @@ class MeasureActivity : AppCompatActivity() {
         }
 
         try {
-            newSession.configure(
-                Config(newSession).apply {
-                    planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
-                    updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
-                    focusMode = Config.FocusMode.AUTO
-                    lightEstimationMode = Config.LightEstimationMode.AMBIENT_INTENSITY
-                }
-            )
+            val config = Config(newSession).apply {
+                planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
+                updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                focusMode = Config.FocusMode.AUTO
+                lightEstimationMode = Config.LightEstimationMode.AMBIENT_INTENSITY
+            }
+            if (newSession.isDepthModeSupported(Config.DepthMode.AUTOMATIC)) {
+                config.depthMode = Config.DepthMode.AUTOMATIC
+            }
+            try {
+                newSession.configure(config)
+            } catch (exception: UnsupportedConfigurationException) {
+                if (config.depthMode == Config.DepthMode.DISABLED) throw exception
+                config.depthMode = Config.DepthMode.DISABLED
+                newSession.configure(config)
+            }
         } catch (exception: Exception) {
             newSession.close()
             arFailed = true
@@ -241,9 +251,9 @@ class MeasureActivity : AppCompatActivity() {
         session = newSession
         val newRenderer = ArCoreRenderer(newSession, state)
         newRenderer.displayRotation = displayRotation()
-        newRenderer.onHitMiss = {
+        newRenderer.onHitMiss = { reason ->
             runOnUiThread {
-                Toast.makeText(this, R.string.measure_no_hit, Toast.LENGTH_SHORT).show()
+                showHitMiss(reason)
             }
         }
         renderer = newRenderer
@@ -326,9 +336,29 @@ class MeasureActivity : AppCompatActivity() {
         }
     }
 
+    private fun showHitMiss(reason: HitFailure) {
+        val message = when (reason) {
+            HitFailure.NOT_TRACKING ->
+                trackingStatusText(state.snapshot.tracking, state.snapshot.planeCount)
+
+            HitFailure.NO_PLANE -> R.string.measure_tracking_plane_search
+            HitFailure.NO_HIT -> R.string.measure_no_hit
+        }
+        Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
+    }
+
     private fun requestHit(x: Float, y: Float) {
         val currentRenderer = renderer ?: return
-        surface.queueEvent { currentRenderer.handleTap(x, y) }
+        val overlayWidth = overlay.width
+        val overlayHeight = overlay.height
+        val viewportWidth = currentRenderer.viewportWidth
+        val viewportHeight = currentRenderer.viewportHeight
+        if (overlayWidth <= 0 || overlayHeight <= 0 || viewportWidth <= 0 || viewportHeight <= 0) {
+            return
+        }
+        val scaleX = viewportWidth.toFloat() / overlayWidth
+        val scaleY = viewportHeight.toFloat() / overlayHeight
+        surface.queueEvent { currentRenderer.handleTap(x * scaleX, y * scaleY) }
     }
 
     private fun toggleUnit() {
