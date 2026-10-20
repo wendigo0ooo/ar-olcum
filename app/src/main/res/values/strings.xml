@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">AR Ölçüm</string>
+    <string name="home_title">AR Ölçüm</string>
+    <string name="home_subtitle">Kamera ve hareket sensörleriyle yaklaşık mesafe ölçümü</string>
+    <string name="home_intro">Telefonunu düz bir yüzeye doğrult, iki noktayı işaretle ve aradaki mesafeyi gör. Ölçümler cihazında kalır.</string>
+    <string name="action_start">Ölçümü Başlat</string>
+    <string name="status_label">Durum</string>
+    <string name="status_checking">ARCore durumu kontrol ediliyor…</string>
+    <string name="status_supported">AR ölçümü bu cihazda kullanılabilir.</string>
+    <string name="status_needs_install">ARCore (Google Play Services for AR) kurulu değil.</string>
+    <string name="status_unsupported">Bu cihaz ARCore desteklemiyor.</string>
+    <string name="status_unknown">ARCore durumu kontrol edilemedi.</string>
+    <string name="dialog_install_title">ARCore gerekli</string>
+    <string name="dialog_install_message">Ölçüm için Google Play Services for AR (ARCore) kurulmalı. Play Store açılacak.</string>
+    <string name="dialog_install_positive">Kur</string>
+    <string name="dialog_install_negative">Vazgeç</string>
+    <string name="install_failed">ARCore kurulumu başlatılamadı. Play Store'dan Google Play Services for AR uygulamasını kur.</string>
+    <string name="dialog_unsupported_title">Cihaz desteklenmiyor</string>
+    <string name="dialog_unsupported_message">Bu cihaz ARCore desteklemiyor. İleride A4 kâğıt referanslı yaklaşık ölçüm modu eklenecek.</string>
+    <string name="dialog_unknown_title">Kontrol edilemedi</string>
+    <string name="dialog_unknown_message">ARCore durumu şu an doğrulanamadı. İnternet bağlantısını kontrol edip tekrar dene.</string>
+    <string name="dialog_close">Kapat</string>
+    <string name="toast_measure_soon">Ölçüm ekranı v0.5 sürümünde eklenecek.</string>
+    <string name="privacy_title">Gizlilik</string>
+    <string name="privacy_text">Kamera görüntüsü cihazda işlenir; sunucuya gönderilmez. Uygulama internet izni istemez.</string>
+    <string name="arcore_notice">Bu uygulama Google Play Services for AR (ARCore) üzerinde çalışır; Google Gizlilik Politikası'na tabidir.</string>
+    <string name="disclaimer_title">Önemli</string>
+    <string name="disclaimer_text">Bu uygulama yaklaşık ölçüm verir; profesyonel ölçüm aleti değildir. İnşaat, tapu, güvenlik veya kritik montaj işlerinde kullanma.</string>
+    <string name="about_text">Sürüm %1$s · AR Ölçüm</string>
+</resources>
