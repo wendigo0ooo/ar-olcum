@@ -172,8 +172,19 @@ if manifest is not None:
         }
         if ".MainActivity" not in activities:
             fail("Manifest'te .MainActivity kaydı yok.")
-        if not (SRC / "java/com/wendigo/arolcum/MainActivity.kt").exists():
-            fail("MainActivity.kt bulunamadı.")
+        if ".MeasureActivity" not in activities:
+            fail("Manifest'te .MeasureActivity kaydı yok.")
+        required_sources = [
+            "MainActivity.kt",
+            "MeasureActivity.kt",
+            "ar/ArCoreRenderer.kt",
+            "ar/CameraBackgroundRenderer.kt",
+            "ar/MeasureState.kt",
+            "ui/OverlayView.kt",
+        ]
+        for source in required_sources:
+            if not (SRC / "java/com/wendigo/arolcum" / source).exists():
+                fail(f"{source} bulunamadı.")
 
 base_bools = resource_names(RES / "values/bools.xml", "bool")
 night_bools = resource_names(RES / "values-night/bools.xml", "bool")
@@ -195,8 +206,8 @@ if not gradle_path.exists():
 else:
     gradle = gradle_path.read_text(encoding="utf-8")
     required_gradle = [
-        ("versionCode = 1", "versionCode 1"),
-        ('versionName = "0.1"', 'versionName "0.1"'),
+        ("versionCode = 2", "versionCode 2"),
+        ('versionName = "0.5"', 'versionName "0.5"'),
         ("compileSdk = 34", "compileSdk 34"),
         ("minSdk = 24", "minSdk 24"),
         ("targetSdk = 34", "targetSdk 34"),

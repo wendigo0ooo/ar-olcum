@@ -10,4 +10,11 @@
     <color name="text_dim">#5A6B78</color>
     <color name="warning">#9A5B00</color>
     <color name="danger">#B3261E</color>
+    <color name="measure_accent">#4FD1C5</color>
+    <color name="measure_line">#FFFFFFFF</color>
+    <color name="measure_label_bg">#CC0A1015</color>
+    <color name="measure_crosshair">#80FFFFFF</color>
+    <color name="overlay_text">#FFFFFFFF</color>
+    <color name="overlay_dim">#CCE8EFF4</color>
+    <color name="overlay_button">#33FFFFFF</color>
 </resources>

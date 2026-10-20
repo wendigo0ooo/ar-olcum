@@ -1,5 +1,6 @@
 package com.wendigo.arolcum
 
+import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -80,7 +81,7 @@ class MainActivity : AppCompatActivity() {
     private fun onStartClicked() {
         when (ArAvailability.check(this)) {
             ArAvailability.Status.SUPPORTED -> {
-                Toast.makeText(this, R.string.toast_measure_soon, Toast.LENGTH_LONG).show()
+                startActivity(Intent(this, MeasureActivity::class.java))
             }
 
             ArAvailability.Status.NEEDS_INSTALL -> {
