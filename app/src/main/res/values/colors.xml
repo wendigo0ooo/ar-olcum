@@ -17,4 +17,5 @@
     <color name="overlay_text">#FFFFFFFF</color>
     <color name="overlay_dim">#CCE8EFF4</color>
     <color name="overlay_button">#33FFFFFF</color>
+    <color name="measure_warning">#FFFFB74D</color>
 </resources>

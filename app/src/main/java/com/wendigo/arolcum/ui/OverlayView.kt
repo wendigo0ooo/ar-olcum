@@ -101,9 +101,18 @@ class OverlayView @JvmOverloads constructor(
         if (snapshot.points.isEmpty()) return
 
         val viewProjection = currentState.viewProjection
+        val viewportWidth = currentState.viewportWidth.takeIf { it > 0 } ?: width
+        val viewportHeight = currentState.viewportHeight.takeIf { it > 0 } ?: height
         val projected = ArrayList<PointF>(snapshot.points.size)
         for (point in snapshot.points) {
-            projected.add(project(point, viewProjection, width, height) ?: continue)
+            val projectedPoint = project(point, viewProjection, viewportWidth, viewportHeight)
+                ?: continue
+            projected.add(
+                PointF(
+                    projectedPoint.x * width.toFloat() / viewportWidth.toFloat(),
+                    projectedPoint.y * height.toFloat() / viewportHeight.toFloat()
+                )
+            )
         }
         if (projected.isEmpty()) return
 

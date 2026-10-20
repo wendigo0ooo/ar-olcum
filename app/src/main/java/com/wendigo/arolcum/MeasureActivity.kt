@@ -13,6 +13,7 @@ import android.opengl.GLSurfaceView
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.provider.Settings
 import android.view.MotionEvent
 import android.view.ViewConfiguration
@@ -30,6 +31,7 @@ import com.google.ar.core.exceptions.CameraNotAvailableException
 import com.google.ar.core.exceptions.UnsupportedConfigurationException
 import com.wendigo.arolcum.ar.ArCoreRenderer
 import com.wendigo.arolcum.ar.HitFailure
+import com.wendigo.arolcum.ar.MeasureQuality
 import com.wendigo.arolcum.ar.MeasureState
 import com.wendigo.arolcum.ar.TrackingState
 import com.wendigo.arolcum.core.UnitSystem
@@ -42,6 +44,7 @@ class MeasureActivity : AppCompatActivity() {
     private lateinit var trackingText: TextView
     private lateinit var measureHint: TextView
     private lateinit var distanceText: TextView
+    private lateinit var qualityText: TextView
     private lateinit var unitButton: MaterialButton
     private lateinit var resetButton: MaterialButton
     private lateinit var copyButton: MaterialButton
@@ -84,6 +87,7 @@ class MeasureActivity : AppCompatActivity() {
         trackingText = findViewById(R.id.trackingText)
         measureHint = findViewById(R.id.measureHint)
         distanceText = findViewById(R.id.distanceText)
+        qualityText = findViewById(R.id.qualityText)
         unitButton = findViewById(R.id.btnUnit)
         resetButton = findViewById(R.id.btnReset)
         copyButton = findViewById(R.id.btnCopy)
@@ -304,6 +308,22 @@ class MeasureActivity : AppCompatActivity() {
             }
         )
 
+        when {
+            !snapshot.hasMeasurement || snapshot.quality == MeasureQuality.HIGH -> {
+                qualityText.visibility = TextView.GONE
+            }
+
+            snapshot.quality == MeasureQuality.LOW -> {
+                qualityText.setText(R.string.measure_quality_low)
+                qualityText.visibility = TextView.VISIBLE
+            }
+
+            else -> {
+                qualityText.setText(R.string.measure_quality_unreliable)
+                qualityText.visibility = TextView.VISIBLE
+            }
+        }
+
         resetButton.isEnabled = snapshot.points.isNotEmpty()
         copyButton.isEnabled = snapshot.hasMeasurement
         shareButton.isEnabled = snapshot.hasMeasurement
@@ -343,6 +363,8 @@ class MeasureActivity : AppCompatActivity() {
 
             HitFailure.NO_PLANE -> R.string.measure_tracking_plane_search
             HitFailure.NO_HIT -> R.string.measure_no_hit
+            HitFailure.OUTSIDE_PLANE -> R.string.measure_outside_plane
+            HitFailure.OUT_OF_RANGE -> R.string.measure_out_of_range
         }
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }
@@ -358,7 +380,8 @@ class MeasureActivity : AppCompatActivity() {
         }
         val scaleX = viewportWidth.toFloat() / overlayWidth
         val scaleY = viewportHeight.toFloat() / overlayHeight
-        surface.queueEvent { currentRenderer.handleTap(x * scaleX, y * scaleY) }
+        val tapAt = SystemClock.elapsedRealtime()
+        surface.queueEvent { currentRenderer.handleTap(x * scaleX, y * scaleY, tapAt) }
     }
 
     private fun toggleUnit() {

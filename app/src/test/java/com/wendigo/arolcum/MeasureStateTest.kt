@@ -1,5 +1,6 @@
 package com.wendigo.arolcum
 
+import com.wendigo.arolcum.ar.MeasureQuality
 import com.wendigo.arolcum.ar.MeasureState
 import com.wendigo.arolcum.ar.TrackingState
 import com.wendigo.arolcum.core.Vec3
@@ -19,12 +20,14 @@ class MeasureStateTest {
             height = 1920,
             points = points,
             distanceMeters = 1.0,
+            quality = MeasureQuality.HIGH,
             tracking = TrackingState.TRACKING,
             planeCount = 2
         )
 
         assertEquals(2, state.snapshot.points.size)
         assertEquals(1.0, state.snapshot.distanceMeters, 0.0001)
+        assertEquals(MeasureQuality.HIGH, state.snapshot.quality)
         assertEquals(TrackingState.TRACKING, state.snapshot.tracking)
         assertEquals(2, state.snapshot.planeCount)
         assertEquals(1080, state.viewportWidth)
@@ -41,6 +44,7 @@ class MeasureStateTest {
             height = 200,
             points = listOf(Vec3(0.0, 0.0, 0.0), Vec3(1.0, 0.0, 0.0)),
             distanceMeters = 1.0,
+            quality = MeasureQuality.LOW,
             tracking = TrackingState.TRACKING,
             planeCount = 1
         )
@@ -49,6 +53,7 @@ class MeasureStateTest {
 
         assertTrue(state.snapshot.points.isEmpty())
         assertEquals(0.0, state.snapshot.distanceMeters, 0.0001)
+        assertEquals(MeasureQuality.HIGH, state.snapshot.quality)
         assertEquals(TrackingState.TRACKING, state.snapshot.tracking)
         assertEquals(1, state.snapshot.planeCount)
     }

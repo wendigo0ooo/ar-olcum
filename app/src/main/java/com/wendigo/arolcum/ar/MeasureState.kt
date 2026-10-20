@@ -2,9 +2,16 @@ package com.wendigo.arolcum.ar
 
 import com.wendigo.arolcum.core.Vec3
 
+enum class MeasureQuality {
+    HIGH,
+    LOW,
+    UNRELIABLE
+}
+
 data class MeasureSnapshot(
     val points: List<Vec3> = emptyList(),
     val distanceMeters: Double = 0.0,
+    val quality: MeasureQuality = MeasureQuality.HIGH,
     val tracking: TrackingState = TrackingState.INITIALIZING,
     val planeCount: Int = 0
 ) {
@@ -35,17 +42,22 @@ class MeasureState {
         height: Int,
         points: List<Vec3>,
         distanceMeters: Double,
+        quality: MeasureQuality,
         tracking: TrackingState,
         planeCount: Int
     ) {
         this.viewProjection = viewProjection
         viewportWidth = width
         viewportHeight = height
-        snapshot = MeasureSnapshot(points, distanceMeters, tracking, planeCount)
+        snapshot = MeasureSnapshot(points, distanceMeters, quality, tracking, planeCount)
     }
 
     fun clear() {
         val current = snapshot
-        snapshot = current.copy(points = emptyList(), distanceMeters = 0.0)
+        snapshot = current.copy(
+            points = emptyList(),
+            distanceMeters = 0.0,
+            quality = MeasureQuality.HIGH
+        )
     }
 }

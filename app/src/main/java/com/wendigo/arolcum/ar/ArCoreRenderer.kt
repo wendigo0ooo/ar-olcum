@@ -3,6 +3,8 @@ package com.wendigo.arolcum.ar
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.opengl.Matrix
+import android.os.SystemClock
+import android.util.Log
 import com.google.ar.core.Anchor
 import com.google.ar.core.Camera
 import com.google.ar.core.DepthPoint
@@ -25,6 +27,7 @@ class ArCoreRenderer(
 ) : GLSurfaceView.Renderer {
     private val backgroundRenderer = CameraBackgroundRenderer()
     private val anchors = mutableListOf<Anchor>()
+    private val pointQualities = mutableListOf<MeasureQuality>()
     private val projection = FloatArray(16)
     private val view = FloatArray(16)
     private val viewProjection = FloatArray(16)
@@ -48,9 +51,15 @@ class ArCoreRenderer(
 
     private var pendingTapX = 0f
     private var pendingTapY = 0f
+    private var pendingTapAt = 0L
 
     @Volatile
     private var pendingTap = false
+
+    private var frozenPoints: List<Vec3>? = null
+    private var frozenDistance = 0.0
+    private var frozenQuality = MeasureQuality.HIGH
+
     private var lastDisplayWidth = -1
     private var lastDisplayHeight = -1
     private var lastDisplayRotation = -1
@@ -70,7 +79,10 @@ class ArCoreRenderer(
     }
 
     override fun onDrawFrame(gl: GL10?) {
-        if (!sessionResumed || viewportWidth <= 0 || viewportHeight <= 0) return
+        if (!sessionResumed || viewportWidth <= 0 || viewportHeight <= 0) {
+            pendingTap = false
+            return
+        }
 
         if (lastDisplayWidth != viewportWidth ||
             lastDisplayHeight != viewportHeight ||
@@ -104,29 +116,32 @@ class ArCoreRenderer(
         }
         frameCount += 1
 
-        val points = ArrayList<Vec3>(anchors.size)
-        val iterator = anchors.iterator()
-        while (iterator.hasNext()) {
-            val anchor = iterator.next()
-            if (anchor.trackingState == ArTrackingState.STOPPED) {
-                anchor.detach()
-                iterator.remove()
-                continue
-            }
-            val translation = anchor.pose.translation
-            points.add(
-                Vec3(
-                    translation[0].toDouble(),
-                    translation[1].toDouble(),
-                    translation[2].toDouble()
-                )
-            )
-        }
+        val points: List<Vec3>
+        val distance: Double
+        val quality: MeasureQuality
 
-        val distance = if (points.size >= 2) {
-            Measurement.distance(points[0], points[1])
+        val frozen = frozenPoints
+        if (frozen != null) {
+            points = frozen
+            distance = frozenDistance
+            quality = frozenQuality
         } else {
-            0.0
+            val activePoints = ArrayList<Vec3>(anchors.size)
+            var index = 0
+            while (index < anchors.size) {
+                val anchor = anchors[index]
+                if (anchor.trackingState == ArTrackingState.STOPPED) {
+                    anchor.detach()
+                    anchors.removeAt(index)
+                    if (index < pointQualities.size) pointQualities.removeAt(index)
+                    continue
+                }
+                activePoints.add(anchorPoint(anchor))
+                index += 1
+            }
+            points = activePoints
+            distance = 0.0
+            quality = MeasureQuality.HIGH
         }
 
         state.publish(
@@ -135,19 +150,23 @@ class ArCoreRenderer(
             height = viewportHeight,
             points = points,
             distanceMeters = distance,
+            quality = quality,
             tracking = mapTracking(camera),
             planeCount = planeCount
         )
 
         if (pendingTap) {
             pendingTap = false
-            processTap(frame, pendingTapX, pendingTapY)
+            if (SystemClock.elapsedRealtime() - pendingTapAt <= TAP_TIMEOUT_MS) {
+                processTap(frame, pendingTapX, pendingTapY)
+            }
         }
     }
 
-    fun handleTap(x: Float, y: Float) {
+    fun handleTap(x: Float, y: Float, tapAt: Long) {
         pendingTapX = x
         pendingTapY = y
+        pendingTapAt = tapAt
         pendingTap = true
     }
 
@@ -163,16 +182,17 @@ class ArCoreRenderer(
             onHitMiss?.invoke(HitFailure.NO_HIT)
             return
         }
-        val hit = hits.firstOrNull { result -> isPreferredHit(result) }
-            ?: hits.firstOrNull { result -> isTrackingHit(result) }
+        val hit = selectHit(hits)
         if (hit == null) {
             val trackingPlanes = session.getAllTrackables(Plane::class.java)
                 .count { it.trackingState == ArTrackingState.TRACKING }
-            onHitMiss?.invoke(
-                if (hits.isEmpty() && trackingPlanes == 0) HitFailure.NO_PLANE else HitFailure.NO_HIT
-            )
+            onHitMiss?.invoke(failureFor(hits, trackingPlanes))
             return
         }
+
+        val trackable = hit.trackable
+        val inPolygon = trackable is Plane && trackable.isPoseInPolygon(hit.hitPose)
+        Log.d(TAG, "hit=${trackable.javaClass.simpleName} distance=${hit.distance} polygon=$inPolygon")
 
         val anchor = try {
             hit.createAnchor()
@@ -181,34 +201,129 @@ class ArCoreRenderer(
             return
         }
 
-        if (anchors.size >= 2) {
-            anchors.forEach { it.detach() }
-            anchors.clear()
-        }
+        clearCompletedMeasurement()
         anchors.add(anchor)
-    }
-
-    private fun isPreferredHit(result: HitResult): Boolean {
-        return when (val trackable = result.trackable) {
-            is Plane -> trackable.trackingState == ArTrackingState.TRACKING &&
-                trackable.isPoseInExtents(result.hitPose)
-            is Point -> trackable.trackingState == ArTrackingState.TRACKING
-            is DepthPoint -> trackable.trackingState == ArTrackingState.TRACKING
-            else -> false
+        pointQualities.add(hitQuality(hit))
+        if (anchors.size >= 2) {
+            freezeMeasurement()
         }
     }
 
-    private fun isTrackingHit(result: HitResult): Boolean {
-        return when (result.trackable) {
-            is Plane, is Point, is DepthPoint ->
-                result.trackable.trackingState == ArTrackingState.TRACKING
-            else -> false
+    private fun selectHit(hits: List<HitResult>): HitResult? {
+        val planeHit = hits.firstOrNull { result ->
+            val trackable = result.trackable
+            trackable is Plane &&
+                trackable.trackingState == ArTrackingState.TRACKING &&
+                isDistanceUsable(result) &&
+                trackable.isPoseInPolygon(result.hitPose)
         }
+        if (planeHit != null) return planeHit
+
+        val hasPlaneHit = hits.any { result ->
+            val trackable = result.trackable
+            trackable is Plane && trackable.trackingState == ArTrackingState.TRACKING
+        }
+        if (hasPlaneHit) return null
+
+        val depthHit = hits.firstOrNull { result ->
+            val trackable = result.trackable
+            trackable is DepthPoint &&
+                trackable.trackingState == ArTrackingState.TRACKING &&
+                isDistanceUsable(result)
+        }
+        if (depthHit != null) return depthHit
+
+        return hits.firstOrNull { result ->
+            val trackable = result.trackable
+            trackable is Point &&
+                trackable.trackingState == ArTrackingState.TRACKING &&
+                isDistanceUsable(result)
+        }
+    }
+
+    private fun failureFor(hits: List<HitResult>, trackingPlanes: Int): HitFailure {
+        if (hits.isEmpty() && trackingPlanes == 0) return HitFailure.NO_PLANE
+
+        val outsidePlane = hits.any { result ->
+            val trackable = result.trackable
+            trackable is Plane &&
+                trackable.trackingState == ArTrackingState.TRACKING &&
+                trackable.isPoseInExtents(result.hitPose) &&
+                !trackable.isPoseInPolygon(result.hitPose)
+        }
+        if (outsidePlane) return HitFailure.OUTSIDE_PLANE
+
+        if (hits.isNotEmpty() && hits.none { isDistanceUsable(it) }) {
+            return HitFailure.OUT_OF_RANGE
+        }
+
+        return HitFailure.NO_HIT
+    }
+
+    private fun isDistanceUsable(result: HitResult): Boolean {
+        val distance = result.distance
+        if (!distance.isFinite()) return false
+        return if (result.trackable is DepthPoint) {
+            distance in MIN_DEPTH_DISTANCE_M..MAX_DEPTH_DISTANCE_M
+        } else {
+            distance in MIN_HIT_DISTANCE_M..MAX_HIT_DISTANCE_M
+        }
+    }
+
+    private fun hitQuality(result: HitResult): MeasureQuality {
+        return if (result.trackable is Plane) MeasureQuality.HIGH else MeasureQuality.LOW
+    }
+
+    private fun freezeMeasurement() {
+        if (anchors.size < 2) return
+
+        val first = anchorPoint(anchors[0])
+        val second = anchorPoint(anchors[1])
+        val distance = Measurement.distance(first, second)
+        frozenPoints = listOf(first, second)
+        frozenDistance = distance
+        frozenQuality = when {
+            !distance.isFinite() ||
+                distance < MIN_MEASUREMENT_M ||
+                distance > MAX_MEASUREMENT_M -> MeasureQuality.UNRELIABLE
+            pointQualities.size < 2 || pointQualities.any { it == MeasureQuality.LOW } ->
+                MeasureQuality.LOW
+            else -> MeasureQuality.HIGH
+        }
+        Log.d(TAG, "measurement=${frozenDistance}m quality=$frozenQuality")
+
+        anchors.forEach { it.detach() }
+        anchors.clear()
+        pointQualities.clear()
+    }
+
+    private fun clearCompletedMeasurement() {
+        if (frozenPoints == null && anchors.size < 2) return
+        anchors.forEach { it.detach() }
+        anchors.clear()
+        pointQualities.clear()
+        frozenPoints = null
+        frozenDistance = 0.0
+        frozenQuality = MeasureQuality.HIGH
+        state.clear()
+    }
+
+    private fun anchorPoint(anchor: Anchor): Vec3 {
+        val translation = anchor.pose.translation
+        return Vec3(
+            translation[0].toDouble(),
+            translation[1].toDouble(),
+            translation[2].toDouble()
+        )
     }
 
     fun reset() {
         anchors.forEach { it.detach() }
         anchors.clear()
+        pointQualities.clear()
+        frozenPoints = null
+        frozenDistance = 0.0
+        frozenQuality = MeasureQuality.HIGH
         state.clear()
     }
 
@@ -235,5 +350,16 @@ class ArCoreRenderer(
             }
             else -> TrackingState.PAUSED
         }
+    }
+
+    private companion object {
+        const val TAG = "ArMeasure"
+        const val MIN_HIT_DISTANCE_M = 0.1f
+        const val MAX_HIT_DISTANCE_M = 12.0f
+        const val MIN_DEPTH_DISTANCE_M = 0.3f
+        const val MAX_DEPTH_DISTANCE_M = 5.0f
+        const val MIN_MEASUREMENT_M = 0.005
+        const val MAX_MEASUREMENT_M = 12.0
+        const val TAP_TIMEOUT_MS = 500L
     }
 }
