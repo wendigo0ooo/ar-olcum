@@ -53,6 +53,7 @@ class ArCoreRenderer(
     private var pendingTapAt = 0L
     private var pendingTap = false
 
+    private var frozenFrame: Frame? = null
     private var measuredDistance = 0.0
     private var measuredQuality = MeasureQuality.HIGH
 
@@ -80,20 +81,25 @@ class ArCoreRenderer(
             return
         }
 
-        if (lastDisplayWidth != viewportWidth ||
-            lastDisplayHeight != viewportHeight ||
-            lastDisplayRotation != displayRotation
-        ) {
-            session.setDisplayGeometry(displayRotation, viewportWidth, viewportHeight)
-            lastDisplayWidth = viewportWidth
-            lastDisplayHeight = viewportHeight
-            lastDisplayRotation = displayRotation
-        }
+        val frozen = frozenFrame
+        val frame = if (frozen != null) {
+            frozen
+        } else {
+            if (lastDisplayWidth != viewportWidth ||
+                lastDisplayHeight != viewportHeight ||
+                lastDisplayRotation != displayRotation
+            ) {
+                session.setDisplayGeometry(displayRotation, viewportWidth, viewportHeight)
+                lastDisplayWidth = viewportWidth
+                lastDisplayHeight = viewportHeight
+                lastDisplayRotation = displayRotation
+            }
 
-        val frame = try {
-            session.update()
-        } catch (exception: CameraNotAvailableException) {
-            return
+            try {
+                session.update()
+            } catch (exception: CameraNotAvailableException) {
+                return
+            }
         }
 
         GLES20.glDisable(GLES20.GL_DEPTH_TEST)
@@ -106,11 +112,13 @@ class ArCoreRenderer(
         camera.getViewMatrix(view, 0)
         Matrix.multiplyMM(viewProjection, 0, projection, 0, view, 0)
 
-        if (frameCount % 30 == 0) {
-            planeCount = session.getAllTrackables(Plane::class.java)
-                .count { it.trackingState == ArTrackingState.TRACKING }
+        if (frozen == null) {
+            if (frameCount % 30 == 0) {
+                planeCount = session.getAllTrackables(Plane::class.java)
+                    .count { it.trackingState == ArTrackingState.TRACKING }
+            }
+            frameCount += 1
         }
-        frameCount += 1
 
         val points = placedPoints.map { it.position }
         val distance = if (placedPoints.size >= 2) measuredDistance else 0.0
@@ -128,12 +136,15 @@ class ArCoreRenderer(
             distanceMeters = distance,
             quality = quality,
             tracking = mapTracking(camera),
-            planeCount = planeCount
+            planeCount = planeCount,
+            frozen = frozenFrame != null
         )
 
         if (pendingTap) {
             pendingTap = false
-            if (SystemClock.elapsedRealtime() - pendingTapAt <= TAP_TIMEOUT_MS) {
+            if (frozenFrame != null ||
+                SystemClock.elapsedRealtime() - pendingTapAt <= TAP_TIMEOUT_MS
+            ) {
                 processTap(frame, pendingTapX, pendingTapY)
             }
         }
@@ -147,6 +158,10 @@ class ArCoreRenderer(
     }
 
     private fun processTap(frame: Frame, x: Float, y: Float) {
+        if (frozenFrame != null && placedPoints.size >= 2) {
+            clearPlacement()
+            return
+        }
         if (frame.camera.trackingState != ArTrackingState.TRACKING) {
             onHitMiss?.invoke(HitFailure.NOT_TRACKING)
             return
@@ -192,6 +207,10 @@ class ArCoreRenderer(
             clearPlacement()
         }
         if (!acceptPoint(point)) return
+        if (frozenFrame == null && placedPoints.size == 1 && point.kind != HitKind.PLANE) {
+            frozenFrame = frame
+            Log.d(TAG, "frame frozen for stable second point")
+        }
         Log.d(
             TAG,
             "placed=${placedPoints.size} point=${position.x},${position.y},${position.z}"
@@ -286,6 +305,7 @@ class ArCoreRenderer(
         placedPoints.clear()
         measuredDistance = 0.0
         measuredQuality = MeasureQuality.HIGH
+        frozenFrame = null
         state.clear()
     }
 
@@ -360,6 +380,7 @@ class ArCoreRenderer(
 
     fun pause() {
         pendingTap = false
+        frozenFrame = null
         lastDisplayWidth = -1
         lastDisplayHeight = -1
         lastDisplayRotation = -1

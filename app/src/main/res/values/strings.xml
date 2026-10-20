@@ -25,11 +25,14 @@
     <string name="measure_dash">—</string>
     <string name="measure_hint_start">Ölçmek için ilk noktaya dokun.</string>
     <string name="measure_hint_second">Şimdi ikinci noktaya dokun.</string>
+    <string name="measure_hint_frozen">Görüntü sabitlendi · ikinci noktaya dokun.</string>
     <string name="measure_hint_done">Ölçüm tamam. Yeni ölçüm için üçüncü noktaya dokun veya sıfırla.</string>
+    <string name="measure_hint_done_frozen">Ölçüm sabitlendi. Yeni ölçüm için Sıfırla\'ya bas.</string>
     <string name="measure_accuracy">Yaklaşık ölçüm · düzlem üzerinde daha doğru</string>
     <string name="measure_tracking_searching">Ortam taranıyor…</string>
     <string name="measure_tracking_plane_search">Düzlem aranıyor · telefonu yavaşça gezdir</string>
     <string name="measure_tracking_ok">Düzlem hazır · bir noktaya dokun</string>
+    <string name="measure_tracking_frozen">Görüntü sabitlendi · ölçüm modu</string>
     <string name="measure_tracking_light">Ortam çok karanlık · ışık ekle</string>
     <string name="measure_tracking_features">Yeterli detay yok · yüzeye doğrult</string>
     <string name="measure_tracking_motion">Çok hızlı hareket · telefonu yavaşlat</string>

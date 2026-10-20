@@ -292,7 +292,13 @@ class MeasureActivity : AppCompatActivity() {
         if (!::trackingText.isInitialized) return
 
         val snapshot = state.snapshot
-        trackingText.setText(trackingStatusText(snapshot.tracking, snapshot.planeCount))
+        trackingText.setText(
+            if (snapshot.frozen) {
+                R.string.measure_tracking_frozen
+            } else {
+                trackingStatusText(snapshot.tracking, snapshot.planeCount)
+            }
+        )
 
         if (snapshot.hasMeasurement) {
             distanceText.text = Units.formatLength(snapshot.distanceMeters, unitSystem)
@@ -301,9 +307,11 @@ class MeasureActivity : AppCompatActivity() {
         }
 
         measureHint.setText(
-            when (snapshot.points.size) {
-                0 -> R.string.measure_hint_start
-                1 -> R.string.measure_hint_second
+            when {
+                snapshot.points.isEmpty() -> R.string.measure_hint_start
+                snapshot.points.size == 1 && snapshot.frozen -> R.string.measure_hint_frozen
+                snapshot.points.size == 1 -> R.string.measure_hint_second
+                snapshot.frozen -> R.string.measure_hint_done_frozen
                 else -> R.string.measure_hint_done
             }
         )

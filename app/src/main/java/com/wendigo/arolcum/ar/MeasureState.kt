@@ -13,7 +13,8 @@ data class MeasureSnapshot(
     val distanceMeters: Double = 0.0,
     val quality: MeasureQuality = MeasureQuality.HIGH,
     val tracking: TrackingState = TrackingState.INITIALIZING,
-    val planeCount: Int = 0
+    val planeCount: Int = 0,
+    val frozen: Boolean = false
 ) {
     val hasMeasurement: Boolean
         get() = points.size >= 2
@@ -51,14 +52,16 @@ class MeasureState {
         distanceMeters: Double,
         quality: MeasureQuality,
         tracking: TrackingState,
-        planeCount: Int
+        planeCount: Int,
+        frozen: Boolean = false
     ) {
         val snapshot = MeasureSnapshot(
             points = points.toList(),
             distanceMeters = distanceMeters,
             quality = quality,
             tracking = tracking,
-            planeCount = planeCount
+            planeCount = planeCount,
+            frozen = frozen
         )
         frame = MeasureFrame(
             viewProjection = viewProjection.copyOf(),
@@ -73,7 +76,8 @@ class MeasureState {
         val snapshot = current.snapshot.copy(
             points = emptyList(),
             distanceMeters = 0.0,
-            quality = MeasureQuality.HIGH
+            quality = MeasureQuality.HIGH,
+            frozen = false
         )
         frame = current.copy(snapshot = snapshot)
     }
