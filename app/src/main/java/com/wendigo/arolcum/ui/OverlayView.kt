@@ -97,12 +97,13 @@ class OverlayView @JvmOverloads constructor(
     }
 
     private fun drawMeasurement(canvas: Canvas, currentState: MeasureState) {
-        val snapshot = currentState.snapshot
+        val frame = currentState.frame
+        val snapshot = frame.snapshot
         if (snapshot.points.isEmpty()) return
 
-        val viewProjection = currentState.viewProjection
-        val viewportWidth = currentState.viewportWidth.takeIf { it > 0 } ?: width
-        val viewportHeight = currentState.viewportHeight.takeIf { it > 0 } ?: height
+        val viewProjection = frame.viewProjection
+        val viewportWidth = frame.viewportWidth.takeIf { it > 0 } ?: width
+        val viewportHeight = frame.viewportHeight.takeIf { it > 0 } ?: height
         val projected = ArrayList<PointF>(snapshot.points.size)
         for (point in snapshot.points) {
             val projectedPoint = project(point, viewProjection, viewportWidth, viewportHeight)

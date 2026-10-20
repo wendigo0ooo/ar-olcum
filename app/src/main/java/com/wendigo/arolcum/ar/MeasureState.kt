@@ -19,22 +19,29 @@ data class MeasureSnapshot(
         get() = points.size >= 2
 }
 
+data class MeasureFrame(
+    val viewProjection: FloatArray = FloatArray(16),
+    val viewportWidth: Int = 0,
+    val viewportHeight: Int = 0,
+    val snapshot: MeasureSnapshot = MeasureSnapshot()
+)
+
 class MeasureState {
     @Volatile
-    var snapshot: MeasureSnapshot = MeasureSnapshot()
+    var frame: MeasureFrame = MeasureFrame()
         private set
 
-    @Volatile
-    var viewProjection: FloatArray = FloatArray(16)
-        private set
+    val snapshot: MeasureSnapshot
+        get() = frame.snapshot
 
-    @Volatile
-    var viewportWidth: Int = 0
-        private set
+    val viewProjection: FloatArray
+        get() = frame.viewProjection
 
-    @Volatile
-    var viewportHeight: Int = 0
-        private set
+    val viewportWidth: Int
+        get() = frame.viewportWidth
+
+    val viewportHeight: Int
+        get() = frame.viewportHeight
 
     fun publish(
         viewProjection: FloatArray,
@@ -46,18 +53,28 @@ class MeasureState {
         tracking: TrackingState,
         planeCount: Int
     ) {
-        this.viewProjection = viewProjection
-        viewportWidth = width
-        viewportHeight = height
-        snapshot = MeasureSnapshot(points, distanceMeters, quality, tracking, planeCount)
+        val snapshot = MeasureSnapshot(
+            points = points.toList(),
+            distanceMeters = distanceMeters,
+            quality = quality,
+            tracking = tracking,
+            planeCount = planeCount
+        )
+        frame = MeasureFrame(
+            viewProjection = viewProjection.copyOf(),
+            viewportWidth = width,
+            viewportHeight = height,
+            snapshot = snapshot
+        )
     }
 
     fun clear() {
-        val current = snapshot
-        snapshot = current.copy(
+        val current = frame
+        val snapshot = current.snapshot.copy(
             points = emptyList(),
             distanceMeters = 0.0,
             quality = MeasureQuality.HIGH
         )
+        frame = current.copy(snapshot = snapshot)
     }
 }

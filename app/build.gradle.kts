@@ -11,8 +11,8 @@ android {
         applicationId = "com.wendigo.arolcum"
         minSdk = 24
         targetSdk = 34
-        versionCode = 4
-        versionName = "0.5.2"
+        versionCode = 5
+        versionName = "0.5.3"
     }
 
     signingConfigs {

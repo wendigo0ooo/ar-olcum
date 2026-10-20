@@ -38,6 +38,7 @@
     <string name="measure_no_hit">Yüzey bulunamadı. Telefonu yavaşça gezdirip tekrar dene.</string>
     <string name="measure_outside_plane">Düzlemin içine dokun; kenara değil.</string>
     <string name="measure_out_of_range">Nokta çok yakın veya çok uzak. Mesafeyi ayarlayıp tekrar dene.</string>
+    <string name="measure_surface_mismatch">İki nokta farklı yüzeyde. Aynı yüzeye dokunarak tekrar dene.</string>
     <string name="measure_quality_low">Düşük güven · derinlik/nokta tahmini; düzlem üzerinde tekrar dene.</string>
     <string name="measure_quality_unreliable">Ölçüm güvenilmez · noktaları yeniden seç.</string>
     <string name="measure_reset">Sıfırla</string>

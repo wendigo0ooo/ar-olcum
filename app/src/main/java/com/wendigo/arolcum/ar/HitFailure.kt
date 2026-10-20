@@ -5,5 +5,6 @@ enum class HitFailure {
     NO_PLANE,
     NO_HIT,
     OUTSIDE_PLANE,
-    OUT_OF_RANGE
+    OUT_OF_RANGE,
+    SURFACE_MISMATCH
 }

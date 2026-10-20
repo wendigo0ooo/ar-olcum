@@ -32,6 +32,8 @@ class MeasureStateTest {
         assertEquals(2, state.snapshot.planeCount)
         assertEquals(1080, state.viewportWidth)
         assertEquals(1920, state.viewportHeight)
+        assertEquals(1080, state.frame.viewportWidth)
+        assertEquals(1920, state.frame.viewportHeight)
         assertTrue(state.snapshot.hasMeasurement)
     }
 
@@ -56,5 +58,7 @@ class MeasureStateTest {
         assertEquals(MeasureQuality.HIGH, state.snapshot.quality)
         assertEquals(TrackingState.TRACKING, state.snapshot.tracking)
         assertEquals(1, state.snapshot.planeCount)
+        assertEquals(100, state.viewportWidth)
+        assertEquals(200, state.viewportHeight)
     }
 }
