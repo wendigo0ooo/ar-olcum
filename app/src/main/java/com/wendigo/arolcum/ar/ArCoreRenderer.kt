@@ -5,6 +5,7 @@ import android.opengl.GLSurfaceView
 import android.opengl.Matrix
 import android.os.SystemClock
 import android.util.Log
+import com.google.ar.core.Anchor
 import com.google.ar.core.Camera
 import com.google.ar.core.DepthPoint
 import com.google.ar.core.Frame
@@ -26,7 +27,7 @@ class ArCoreRenderer(
     private val state: MeasureState
 ) : GLSurfaceView.Renderer {
     private val backgroundRenderer = CameraBackgroundRenderer()
-    private val placedPoints = mutableListOf<PlacedPoint>()
+    private val placements = mutableListOf<PlacedPoint>()
     private val projection = FloatArray(16)
     private val view = FloatArray(16)
     private val viewProjection = FloatArray(16)
@@ -53,10 +54,6 @@ class ArCoreRenderer(
     private var pendingTapAt = 0L
     private var pendingTap = false
 
-    private var frozenFrame: Frame? = null
-    private var measuredDistance = 0.0
-    private var measuredQuality = MeasureQuality.HIGH
-
     private var lastDisplayWidth = -1
     private var lastDisplayHeight = -1
     private var lastDisplayRotation = -1
@@ -81,25 +78,20 @@ class ArCoreRenderer(
             return
         }
 
-        val frozen = frozenFrame
-        val frame = if (frozen != null) {
-            frozen
-        } else {
-            if (lastDisplayWidth != viewportWidth ||
-                lastDisplayHeight != viewportHeight ||
-                lastDisplayRotation != displayRotation
-            ) {
-                session.setDisplayGeometry(displayRotation, viewportWidth, viewportHeight)
-                lastDisplayWidth = viewportWidth
-                lastDisplayHeight = viewportHeight
-                lastDisplayRotation = displayRotation
-            }
+        if (lastDisplayWidth != viewportWidth ||
+            lastDisplayHeight != viewportHeight ||
+            lastDisplayRotation != displayRotation
+        ) {
+            session.setDisplayGeometry(displayRotation, viewportWidth, viewportHeight)
+            lastDisplayWidth = viewportWidth
+            lastDisplayHeight = viewportHeight
+            lastDisplayRotation = displayRotation
+        }
 
-            try {
-                session.update()
-            } catch (exception: CameraNotAvailableException) {
-                return
-            }
+        val frame = try {
+            session.update()
+        } catch (exception: CameraNotAvailableException) {
+            return
         }
 
         GLES20.glDisable(GLES20.GL_DEPTH_TEST)
@@ -112,18 +104,54 @@ class ArCoreRenderer(
         camera.getViewMatrix(view, 0)
         Matrix.multiplyMM(viewProjection, 0, projection, 0, view, 0)
 
-        if (frozen == null) {
-            if (frameCount % 30 == 0) {
-                planeCount = session.getAllTrackables(Plane::class.java)
-                    .count { it.trackingState == ArTrackingState.TRACKING }
+        if (frameCount % 30 == 0) {
+            planeCount = session.getAllTrackables(Plane::class.java)
+                .count { it.trackingState == ArTrackingState.TRACKING }
+        }
+        frameCount += 1
+
+        if (pendingTap) {
+            pendingTap = false
+            if (SystemClock.elapsedRealtime() - pendingTapAt <= TAP_TIMEOUT_MS) {
+                processTap(frame, pendingTapX, pendingTapY)
             }
-            frameCount += 1
         }
 
-        val points = placedPoints.map { it.position }
-        val distance = if (placedPoints.size >= 2) measuredDistance else 0.0
-        val quality = if (placedPoints.size >= 2) {
-            measuredQuality
+        var anchorUnstable = false
+        var anchorRemoved = false
+        val points = ArrayList<Vec3>(placements.size)
+        val iterator = placements.iterator()
+        while (iterator.hasNext()) {
+            val placement = iterator.next()
+            when (placement.anchor.trackingState) {
+                ArTrackingState.TRACKING -> {
+                    points.add(anchorPosition(placement.anchor))
+                }
+
+                ArTrackingState.STOPPED -> {
+                    placement.anchor.detach()
+                    iterator.remove()
+                    anchorUnstable = true
+                    anchorRemoved = true
+                }
+
+                else -> {
+                    anchorUnstable = true
+                    points.add(anchorPosition(placement.anchor))
+                }
+            }
+        }
+        if (anchorRemoved) {
+            onHitMiss?.invoke(HitFailure.ANCHOR_LOST)
+        }
+
+        val distance = if (points.size >= 2) {
+            Measurement.distance(points[0], points[1])
+        } else {
+            0.0
+        }
+        val quality = if (points.size >= 2) {
+            qualityFor(placements, distance, anchorUnstable)
         } else {
             MeasureQuality.HIGH
         }
@@ -137,17 +165,8 @@ class ArCoreRenderer(
             quality = quality,
             tracking = mapTracking(camera),
             planeCount = planeCount,
-            frozen = frozenFrame != null
+            frozen = points.size >= 2
         )
-
-        if (pendingTap) {
-            pendingTap = false
-            if (frozenFrame != null ||
-                SystemClock.elapsedRealtime() - pendingTapAt <= TAP_TIMEOUT_MS
-            ) {
-                processTap(frame, pendingTapX, pendingTapY)
-            }
-        }
     }
 
     fun handleTap(x: Float, y: Float, tapAt: Long) {
@@ -158,10 +177,6 @@ class ArCoreRenderer(
     }
 
     private fun processTap(frame: Frame, x: Float, y: Float) {
-        if (frozenFrame != null && placedPoints.size >= 2) {
-            clearPlacement()
-            return
-        }
         if (frame.camera.trackingState != ArTrackingState.TRACKING) {
             onHitMiss?.invoke(HitFailure.NOT_TRACKING)
             return
@@ -190,30 +205,46 @@ class ArCoreRenderer(
             "selected=${candidate.kind} distance=${hit.distance} polygon=$inPolygon"
         )
 
-        val position = hitPoint(hit)
-        val point = PlacedPoint(
-            position = position,
-            quality = if (candidate.kind == HitKind.PLANE && inPolygon) {
-                MeasureQuality.HIGH
-            } else {
-                MeasureQuality.LOW
-            },
-            kind = candidate.kind,
-            planeId = candidate.planeId,
-            hitDistance = hit.distance
-        )
-
-        if (placedPoints.size >= 2) {
+        if (placements.size >= 2) {
             clearPlacement()
         }
-        if (!acceptPoint(point)) return
-        if (frozenFrame == null && placedPoints.size == 1 && point.kind != HitKind.PLANE) {
-            frozenFrame = frame
-            Log.d(TAG, "frame frozen for stable second point")
+
+        val first = placements.firstOrNull()
+        if (first != null) {
+            val firstIsPlane = first.kind == HitKind.PLANE
+            val nextIsPlane = candidate.kind == HitKind.PLANE
+            if (firstIsPlane != nextIsPlane &&
+                abs(hit.distance - first.hitDistance) > MIXED_SURFACE_MAX_GAP_M
+            ) {
+                onHitMiss?.invoke(HitFailure.SURFACE_MISMATCH)
+                return
+            }
         }
+
+        val anchor = try {
+            hit.createAnchor()
+        } catch (exception: Exception) {
+            onHitMiss?.invoke(HitFailure.NO_HIT)
+            return
+        }
+
+        placements.add(
+            PlacedPoint(
+                anchor = anchor,
+                quality = if (candidate.kind == HitKind.PLANE && inPolygon) {
+                    MeasureQuality.HIGH
+                } else {
+                    MeasureQuality.LOW
+                },
+                kind = candidate.kind,
+                planeId = candidate.planeId,
+                hitDistance = hit.distance
+            )
+        )
+        val position = anchorPosition(anchor)
         Log.d(
             TAG,
-            "placed=${placedPoints.size} point=${position.x},${position.y},${position.z}"
+            "placed=${placements.size} point=${position.x},${position.y},${position.z}"
         )
     }
 
@@ -251,61 +282,34 @@ class ArCoreRenderer(
         return HitSelector.choose(candidates)
     }
 
-    private fun acceptPoint(point: PlacedPoint): Boolean {
-        val first = placedPoints.firstOrNull()
-        if (first != null) {
-            val firstIsPlane = first.kind == HitKind.PLANE
-            val nextIsPlane = point.kind == HitKind.PLANE
-            if (firstIsPlane != nextIsPlane &&
-                abs(point.hitDistance - first.hitDistance) > MIXED_SURFACE_MAX_GAP_M
-            ) {
-                onHitMiss?.invoke(HitFailure.SURFACE_MISMATCH)
-                return false
-            }
+    private fun qualityFor(
+        placements: List<PlacedPoint>,
+        distance: Double,
+        anchorUnstable: Boolean
+    ): MeasureQuality {
+        if (!distance.isFinite() ||
+            distance < MIN_MEASUREMENT_M ||
+            distance > MAX_MEASUREMENT_M
+        ) {
+            return MeasureQuality.UNRELIABLE
         }
+        if (anchorUnstable) return MeasureQuality.LOW
 
-        placedPoints.add(point)
-        if (placedPoints.size >= 2) {
-            freezeMeasurement()
-        }
-        return true
-    }
-
-    private fun freezeMeasurement() {
-        if (placedPoints.size < 2) return
-
-        val first = placedPoints[0]
-        val second = placedPoints[1]
-        val distance = Measurement.distance(first.position, second.position)
         val differentPlanes =
-            first.kind == HitKind.PLANE &&
-                second.kind == HitKind.PLANE &&
-                first.planeId != second.planeId
-
-        measuredDistance = distance
-        measuredQuality = when {
-            !distance.isFinite() ||
-                distance < MIN_MEASUREMENT_M ||
-                distance > MAX_MEASUREMENT_M -> MeasureQuality.UNRELIABLE
-
-            first.quality == MeasureQuality.LOW ||
-                second.quality == MeasureQuality.LOW ||
-                differentPlanes -> MeasureQuality.LOW
-
-            else -> MeasureQuality.HIGH
+            placements.size >= 2 &&
+                placements[0].kind == HitKind.PLANE &&
+                placements[1].kind == HitKind.PLANE &&
+                placements[0].planeId != placements[1].planeId
+        return if (placements.any { it.quality == MeasureQuality.LOW } || differentPlanes) {
+            MeasureQuality.LOW
+        } else {
+            MeasureQuality.HIGH
         }
-        Log.d(
-            TAG,
-            "measurement=${measuredDistance}m quality=$measuredQuality " +
-                "hits=${first.hitDistance}/${second.hitDistance}"
-        )
     }
 
     private fun clearPlacement() {
-        placedPoints.clear()
-        measuredDistance = 0.0
-        measuredQuality = MeasureQuality.HIGH
-        frozenFrame = null
+        placements.forEach { it.anchor.detach() }
+        placements.clear()
         state.clear()
     }
 
@@ -349,8 +353,8 @@ class ArCoreRenderer(
         }
     }
 
-    private fun hitPoint(hit: HitResult): Vec3 {
-        val translation = hit.hitPose.translation
+    private fun anchorPosition(anchor: Anchor): Vec3 {
+        val translation = anchor.pose.translation
         return Vec3(
             translation[0].toDouble(),
             translation[1].toDouble(),
@@ -380,13 +384,13 @@ class ArCoreRenderer(
 
     fun pause() {
         pendingTap = false
-        frozenFrame = null
         lastDisplayWidth = -1
         lastDisplayHeight = -1
         lastDisplayRotation = -1
     }
 
     fun release() {
+        clearPlacement()
         backgroundRenderer.release()
     }
 
@@ -405,7 +409,7 @@ class ArCoreRenderer(
     }
 
     private data class PlacedPoint(
-        val position: Vec3,
+        val anchor: Anchor,
         val quality: MeasureQuality,
         val kind: HitKind,
         val planeId: Int,

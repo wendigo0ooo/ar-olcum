@@ -374,6 +374,7 @@ class MeasureActivity : AppCompatActivity() {
             HitFailure.OUTSIDE_PLANE -> R.string.measure_outside_plane
             HitFailure.OUT_OF_RANGE -> R.string.measure_out_of_range
             HitFailure.SURFACE_MISMATCH -> R.string.measure_surface_mismatch
+            HitFailure.ANCHOR_LOST -> R.string.measure_anchor_lost
         }
         Toast.makeText(this, message, Toast.LENGTH_SHORT).show()
     }

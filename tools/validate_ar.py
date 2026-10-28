@@ -208,8 +208,8 @@ if not gradle_path.exists():
 else:
     gradle = gradle_path.read_text(encoding="utf-8")
     required_gradle = [
-        ("versionCode = 6", "versionCode 6"),
-        ('versionName = "0.5.4"', 'versionName "0.5.4"'),
+        ("versionCode = 7", "versionCode 7"),
+        ('versionName = "0.5.5"', 'versionName "0.5.5"'),
         ("compileSdk = 34", "compileSdk 34"),
         ("minSdk = 24", "minSdk 24"),
         ("targetSdk = 34", "targetSdk 34"),
